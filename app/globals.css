@@ -170,6 +170,15 @@ button {
   line-height: 1.5;
 }
 
+.source-card a,
+details a {
+  overflow-wrap: anywhere;
+}
+
+.source-note {
+  margin-top: 0;
+}
+
 .receipt-panel,
 .signup {
   display: grid;

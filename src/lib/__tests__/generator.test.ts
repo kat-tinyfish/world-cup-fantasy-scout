@@ -43,6 +43,8 @@ describe("generateDrafts", () => {
     expect(result.created).toHaveLength(1);
     expect(result.created[0].status).toBe("draft");
     expect(result.created[0].sources).toHaveLength(1);
+    expect(new URL(result.created[0].landingUrl).pathname).toMatch(/\/receipts\/draft_/);
+    expect(new URL(result.created[0].landingUrl).searchParams.get("r")).toBeTruthy();
     expect(result.created[0].text).toContain("captain");
     expect(result.created[0].text).toContain(result.created[0].landingUrl);
     expect(result.created[0].text).not.toContain("TinyFish found the receipts");

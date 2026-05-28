@@ -34,7 +34,8 @@ async function generate(request: Request) {
   const result = await generateDrafts({
     store,
     pillars: generationRequest.pillars,
-    targetCount: generationRequest.count
+    targetCount: generationRequest.count,
+    receiptLinks: generationRequest.receiptLinks
   });
 
   return NextResponse.json(result);
@@ -54,6 +55,7 @@ function streamGenerate(generationRequest: ParsedGenerationRequest): Response {
           store,
           pillars: generationRequest.pillars,
           targetCount: generationRequest.count,
+          receiptLinks: generationRequest.receiptLinks,
           onProgress: send
         });
         send({ type: "result", data: result });
@@ -78,6 +80,7 @@ type ParsedGenerationRequest = {
   stream: boolean;
   count: number;
   pillars: ContentPillar[];
+  receiptLinks: boolean;
 };
 
 function parseGenerationRequest(request: Request): ParsedGenerationRequest {
@@ -88,7 +91,8 @@ function parseGenerationRequest(request: Request): ParsedGenerationRequest {
   return {
     stream: params.get("stream") === "1",
     count: normalizeTargetCount(rawCount),
-    pillars: normalizePillars(rawPillars)
+    pillars: normalizePillars(rawPillars),
+    receiptLinks: params.get("receiptLinks") !== "0"
   };
 }
 

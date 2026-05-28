@@ -7,7 +7,7 @@ The bot drafts funny fantasy posts, attaches TinyFish-powered receipts, and wait
 ## What it ships
 
 - Public campaign landing page at `/`
-- Per-draft receipts pages at `/receipts/:id` for future durable-storage mode
+- Per-draft receipts pages at `/receipts/:id` with embedded evidence snapshots, so no database is required
 - Admin approval queue at `/admin?token=ADMIN_APPROVAL_TOKEN`
 - On-demand draft generator at `/api/cron/generate`
 - Session-based publishing from the admin console
@@ -45,7 +45,7 @@ APP_BASE_URL=https://agent.tinyfish.ai/world-cup-fantasy
 ADMIN_APPROVAL_TOKEN=...
 ```
 
-No database is required for V1. Drafts are stored in the admin browser tab's `sessionStorage` and are discarded when that browser session ends. This is intentional: drafts are review artifacts, not durable campaign records.
+No database is required for V1. Drafts are stored in the admin browser tab's `sessionStorage` and are discarded when that browser session ends. Tweet receipt links also carry a compact source-evidence snapshot in the URL, so the public receipts page can still show Search links, Fetch excerpts, and Agent/insight notes without durable storage.
 
 ## Operational flow
 
@@ -54,9 +54,10 @@ No database is required for V1. Drafts are stored in the admin browser tab's `se
 3. TinyFish Fetch gets clean text for up to 10 source URLs and the app dedupes that into usable source evidence.
 4. The admin console streams live progress events so reviewers can see search, fetch, TinyFish Agent, LLM, and draft outcomes as they happen.
 5. TinyFish Agent runs when `TINYFISH_AGENT_ENABLED=1`, using `/v1/automation/run-sse` to inspect the top source page and produce the fantasy insight.
-6. The LLM writes the final funny X post from that insight when `OPENAI_API_KEY` is set. If the LLM is unavailable or fails guardrails, the app uses a short deterministic fallback.
-7. The admin console stores drafts in browser `sessionStorage` for review, editing, approval, and dry-run publishing.
-8. When a human clicks **Publish now**, `/api/admin/publish` validates that selected draft and posts through the official X API, or returns a dry-run result when `X_DRY_RUN=1`.
+6. The app builds a receipt URL under `/receipts/:draftId` with UTM params plus a compact evidence snapshot.
+7. The LLM writes the final funny X post from that insight when `OPENAI_API_KEY` is set. If the LLM is unavailable or fails guardrails, the app uses a short deterministic fallback.
+8. The admin console stores drafts in browser `sessionStorage` for review, editing, approval, and dry-run publishing.
+9. When a human clicks **Publish now**, `/api/admin/publish` validates that selected draft and posts through the official X API, or returns a dry-run result when `X_DRY_RUN=1`.
 
 ## Bot voice
 
@@ -64,6 +65,16 @@ No database is required for V1. Drafts are stored in the admin browser tab's `se
 - Joke first, concrete fantasy insight second, proof link third. The URL is the receipt, so posts do not explain it.
 - Recurring bits can hit captain blanks, template panic, rotation risk, ownership traps, deadline scrambling, mini-league receipts, and bench regret.
 - Never mock injuries, attack users, target protected classes, or mention users in v1 posts.
+
+## Tweet links
+
+Every generated tweet should link to the app receipt page, not only the generic landing page:
+
+```text
+APP_BASE_URL/receipts/<draftId>?utm_source=x&utm_medium=bot&utm_campaign=world_cup_fantasy&utm_content=<pillar>&r=<evidence-snapshot>
+```
+
+That page shows the tweet/source trail: source links found by Search, snippets or excerpts cleaned by Fetch, Agent takeaways when available, the fallback source-backed insight, and generation notes. The `r` snapshot keeps this DB-free; if the server still has the draft in memory, the page uses the richer in-memory draft, otherwise it falls back to the embedded snapshot.
 
 ## Testing
 

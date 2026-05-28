@@ -292,10 +292,15 @@ export function AdminConsole({ token }: { token: string }) {
             </div>
             <details>
               <summary>Source evidence</summary>
+              <p>
+                Receipt link: <a href={draft.landingUrl}>{draft.landingUrl}</a>
+              </p>
               <ul>
                 {draft.sources.map((source) => (
                   <li key={source.id}>
                     <a href={source.url}>{source.title}</a>
+                    {source.snippet ? <p>Search snippet: {source.snippet}</p> : null}
+                    {source.fetchedText ? <p>Fetched excerpt: {source.fetchedText.slice(0, 360)}</p> : null}
                     {source.agentInsight ? <p>Agent: {source.agentInsight}</p> : null}
                   </li>
                 ))}

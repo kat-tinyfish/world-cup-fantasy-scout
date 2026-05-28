@@ -3,6 +3,7 @@ import { validateDraftText } from "./guardrails";
 import { makeId } from "./ids";
 import { buildFallbackTweet, writeTweetWithLlm } from "./llm";
 import { PILLAR_LABELS, PILLAR_QUERIES } from "./personality";
+import { buildReceiptSnapshot, encodeReceiptSnapshot } from "./receiptSnapshot";
 import { mergeSearchAndFetch, sourceSummary, type SearchResult } from "./sources";
 import type { Store } from "./store";
 import { TinyFishApiClient, type TinyFishClient } from "./tinyfish";
@@ -152,7 +153,7 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
 
     await store.upsertSources(sources);
     let draft = buildDraftFromSources(pillar, sources, now, {
-      receiptLinks: options.receiptLinks ?? false,
+      receiptLinks: options.receiptLinks ?? true,
       insight,
       generationNotes,
       hookOffset: index
@@ -232,8 +233,15 @@ export function buildDraftFromSources(
   options: { receiptLinks?: boolean; insight?: string | null; generationNotes?: string[]; hookOffset?: number } = {}
 ): DraftPost {
   const id = makeId("draft");
-  const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, options.receiptLinks ? id : undefined);
   const insight = options.insight || buildSourceBackedInsight(pillar, sources);
+  const landingUrl = buildLandingUrl({
+    id,
+    pillar,
+    sources,
+    insight,
+    generationNotes: options.generationNotes ?? [],
+    receiptLinks: options.receiptLinks ?? true
+  });
   const text = buildFallbackTweet({
     pillar,
     insight,
@@ -267,17 +275,26 @@ export function buildDraftFromSources(
 
 export function regenerateJoke(draft: DraftPost): DraftPost {
   const insight = buildSourceBackedInsight(draft.pillar, draft.sources);
+  const landingUrl = buildLandingUrl({
+    id: draft.id,
+    pillar: draft.pillar,
+    sources: draft.sources,
+    insight,
+    generationNotes: draft.generationNotes ?? [],
+    receiptLinks: isReceiptLink(draft.landingUrl)
+  });
   const text = buildFallbackTweet({
     pillar: draft.pillar,
     insight,
-    landingUrl: draft.landingUrl,
+    landingUrl,
     sources: draft.sources,
     hookVariant: draft.text.length + 1
   });
-  const validation = validateDraftText(text, draft.sources, draft.landingUrl);
+  const validation = validateDraftText(text, draft.sources, landingUrl);
   return {
     ...draft,
     text,
+    landingUrl,
     toneScore: validation.toneScore,
     usefulnessScore: validation.usefulnessScore,
     updatedAt: new Date().toISOString()
@@ -288,18 +305,27 @@ export function regenerateInsight(draft: DraftPost): DraftPost {
   const rotatedSources = [...draft.sources.slice(1), draft.sources[0]].filter(Boolean);
   const sources = rotatedSources.length ? rotatedSources : draft.sources;
   const insight = buildSourceBackedInsight(draft.pillar, sources);
+  const landingUrl = buildLandingUrl({
+    id: draft.id,
+    pillar: draft.pillar,
+    sources,
+    insight,
+    generationNotes: draft.generationNotes ?? [],
+    receiptLinks: isReceiptLink(draft.landingUrl)
+  });
   const text = buildFallbackTweet({
     pillar: draft.pillar,
     insight,
-    landingUrl: draft.landingUrl,
+    landingUrl,
     sources,
     hookVariant: draft.text.length + 2
   });
-  const validation = validateDraftText(text, sources, draft.landingUrl);
+  const validation = validateDraftText(text, sources, landingUrl);
   return {
     ...draft,
     sources,
     text,
+    landingUrl,
     toneScore: validation.toneScore,
     usefulnessScore: validation.usefulnessScore,
     updatedAt: new Date().toISOString()
@@ -369,6 +395,39 @@ function cleanSourceTitle(source?: Source): string {
 
 function cleanInsight(value: string): string {
   return value.replace(/\s+/g, " ").replace(/^useful bit:\s*/i, "").trim();
+}
+
+function buildLandingUrl(input: {
+  id: string;
+  pillar: ContentPillar;
+  sources: Source[];
+  insight: string;
+  generationNotes: string[];
+  receiptLinks: boolean;
+}): string {
+  if (!input.receiptLinks) {
+    return buildCampaignUrl(getEnv().appBaseUrl, input.pillar);
+  }
+
+  const snapshot = encodeReceiptSnapshot(
+    buildReceiptSnapshot({
+      draftId: input.id,
+      pillar: input.pillar,
+      insight: input.insight,
+      sources: input.sources,
+      generationNotes: input.generationNotes
+    })
+  );
+
+  return buildCampaignUrl(getEnv().appBaseUrl, input.pillar, input.id, snapshot);
+}
+
+function isReceiptLink(url: string): boolean {
+  try {
+    return new URL(url).pathname.startsWith("/receipts/");
+  } catch {
+    return false;
+  }
 }
 
 function hasUsableSourceText(source: Source): boolean {
