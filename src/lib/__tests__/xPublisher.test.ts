@@ -10,6 +10,7 @@ vi.stubEnv("X_CLIENT_SECRET", "secret");
 vi.stubEnv("X_REFRESH_TOKEN", "refresh");
 vi.stubEnv("X_OAUTH_TOKEN_URL", "https://x.example/oauth");
 vi.stubEnv("X_API_BASE_URL", "https://x.example");
+vi.stubEnv("X_DRY_RUN", "0");
 
 const source: Source = {
   id: "src_1",
