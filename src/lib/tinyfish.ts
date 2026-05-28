@@ -109,9 +109,10 @@ export class TinyFishApiClient implements TinyFishClient {
         browser_profile: "lite",
         goal: [
           `Review this page for the TinyFish World Cup Fantasy Scout ${input.pillarLabel} pillar.`,
-          "Extract one timely, source-backed fantasy football insight that would help a World Cup Fantasy manager.",
+          "Extract one timely, source-backed fantasy football insight that would make a World Cup Fantasy manager think: right, that matters before deadline.",
           "Prefer starter risk, captaincy, ownership, fixture, set-piece, chip, lineup, or deadline-relevant details.",
-          "Return a single concise sentence. Do not include markdown, citations, or unsupported claims."
+          "Write like a fantasy insider, not a generic sports analyst.",
+          "Return a single concise sentence with the practical why. Do not include markdown, citations, or unsupported claims."
         ].join(" ")
       })
     });

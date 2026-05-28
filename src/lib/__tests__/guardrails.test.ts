@@ -18,7 +18,7 @@ const source: Source = {
 describe("guardrails", () => {
   it("accepts a funny, useful, source-backed post", () => {
     const result = validateDraftText(
-      `Captaincy crimes court is now in session. Useful bit: captain planning matters before deadline. TinyFish found the receipts: ${landingUrl}`,
+      `Captaincy plan before the group chat becomes a courtroom. Build captain switches before deadline. ${landingUrl}`,
       [source],
       landingUrl
     );
@@ -39,7 +39,7 @@ describe("guardrails", () => {
 
   it("rejects user mentions in v1", () => {
     const result = validateDraftText(
-      `Captaincy crimes court is now in session. Useful bit: captain planning matters, @somebody. ${landingUrl}`,
+      `Captaincy plan before the group chat becomes a courtroom. Build captain switches before deadline, @somebody. ${landingUrl}`,
       [source],
       landingUrl
     );
@@ -50,7 +50,7 @@ describe("guardrails", () => {
 
   it("rejects injury jokes", () => {
     const result = validateDraftText(
-      `Rotation weather report: the injury list is funny lol. Useful bit: lineup watch matters. ${landingUrl}`,
+      `Lineup watch, aka certainty wearing a fake mustache. The injury list is funny lol, but lineup watch matters. ${landingUrl}`,
       [source],
       landingUrl
     );

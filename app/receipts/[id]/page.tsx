@@ -15,7 +15,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     <main>
       <section className="hero compact">
         <div className="eyebrow">{PILLAR_LABELS[draft.pillar]}</div>
-        <h1>TinyFish found the receipts.</h1>
+        <h1>The receipts behind the scout note.</h1>
         <p className="hero-copy">{draft.text.replace(draft.landingUrl, "").trim()}</p>
         <div className="hero-actions">
           <a className="button primary" href="/#signup">

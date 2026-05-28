@@ -1,28 +1,30 @@
 import { getEnv } from "./env";
-import { validateDraftText } from "./guardrails";
+import { validateDraftText, xWeightedLength } from "./guardrails";
+import { HOOKS } from "./personality";
 import type { ContentPillar, Source } from "./types";
 
-export type LlmPolishInput = {
+export type LlmTweetInput = {
   pillar: ContentPillar;
-  draftText: string;
+  insight: string;
   landingUrl: string;
   sources: Source[];
-  agentInsight?: string | null;
+  hookVariant?: number;
 };
 
-export type LlmPolishResult = {
+export type LlmTweetResult = {
   text: string;
   usedLlm: boolean;
   note: string;
 };
 
-export async function polishDraftWithLlm(input: LlmPolishInput): Promise<LlmPolishResult> {
+export async function writeTweetWithLlm(input: LlmTweetInput): Promise<LlmTweetResult> {
+  const fallback = buildFallbackTweet(input);
   const env = getEnv();
   if (!env.openaiApiKey) {
     return {
-      text: input.draftText,
+      text: fallback,
       usedLlm: false,
-      note: "LLM polish skipped because OPENAI_API_KEY is not set."
+      note: "LLM tweet writing skipped because OPENAI_API_KEY is not set."
     };
   }
 
@@ -39,21 +41,24 @@ export async function polishDraftWithLlm(input: LlmPolishInput): Promise<LlmPoli
         {
           role: "developer",
           content: [
-            "You write funny, concise X posts for a World Cup Fantasy assistant.",
-            "Voice: witty scout, medium banter, joke-first, football-native, never mean-spirited.",
-            "Hard rules: keep the exact URL unchanged; stay within 280 X-weighted characters; include one useful fantasy insight; do not mention users; do not joke about injuries; do not invent facts.",
+            "You write the final X/Twitter post for a World Cup Fantasy assistant.",
+            "TinyFish campaign voice: fantasy insider talking to another fantasy insider, smart friend in the deadline-chaos group chat, specific, wry, and useful without sounding like a brand account.",
+            "Make the first line a hook that proves you understand World Cup Fantasy pain: captain blanks, template panic, rotation risk, ownership traps, deadline scrambling, and mini-league receipts.",
+            "The joke should come from the source-backed fantasy insight, not random mascot lore or builder/product language.",
+            "Structure: one funny hook, one concrete fantasy insight, then the exact proof URL. The URL is the receipt, so do not explain it.",
+            "Avoid corporate filler, press-release voice, generic hype, builder-to-builder phrasing, goblin/hydra bits, 'Useful bit', 'TinyFish found the receipts', labels, and hashtags.",
+            "Hard rules: keep the exact URL unchanged; keep the whole post under 280 X-weighted characters; do not mention users; do not joke about injuries; do not invent facts.",
             "Return only the final post text. No markdown, no labels, no alternatives."
           ].join(" ")
         },
         {
           role: "user",
           content: [
-            `Current draft: ${input.draftText}`,
             `Pillar: ${input.pillar}`,
+            `Agent insight to turn into the tweet: ${input.insight}`,
             `Required URL: ${input.landingUrl}`,
-            input.agentInsight ? `TinyFish Agent insight: ${input.agentInsight}` : "TinyFish Agent insight: none",
-            `Source evidence: ${input.sources
-              .map((source) => `${source.title}: ${source.snippet || source.fetchedText?.slice(0, 220) || source.url}`)
+            `Clean source evidence from Fetch: ${input.sources
+              .map((source) => `${source.title}: ${source.snippet || source.fetchedText?.slice(0, 240) || source.url}`)
               .join("\n")}`
           ].join("\n\n")
         }
@@ -63,29 +68,44 @@ export async function polishDraftWithLlm(input: LlmPolishInput): Promise<LlmPoli
 
   if (!response.ok) {
     return {
-      text: input.draftText,
+      text: fallback,
       usedLlm: false,
-      note: `LLM polish skipped because OpenAI returned ${response.status}.`
+      note: `LLM tweet writing skipped because OpenAI returned ${response.status}.`
     };
   }
 
   const data = (await response.json()) as OpenAIResponse;
-  const candidate = extractResponseText(data).replace(/^["']|["']$/g, "").trim();
+  const candidate = cleanModelTweet(extractResponseText(data));
   const validation = validateDraftText(candidate, input.sources, input.landingUrl);
 
   if (!candidate || !validation.ok) {
     return {
-      text: input.draftText,
+      text: fallback,
       usedLlm: false,
-      note: `LLM polish rejected by guardrails: ${validation.errors.join(" ")}`
+      note: `LLM tweet rejected by guardrails: ${validation.errors.join(" ")}`
     };
   }
 
   return {
     text: candidate,
     usedLlm: true,
-    note: "LLM polished the joke and wording."
+    note: "LLM wrote the final tweet from the source-backed insight."
   };
+}
+
+export function buildFallbackTweet(input: LlmTweetInput): string {
+  const hook = fallbackHookForPillar(input.pillar, input.hookVariant ?? 0);
+  const compactInsight = compactSentence(input.insight, 145);
+  const candidates = [
+    `${hook} ${compactInsight} ${input.landingUrl}`,
+    `${hook} ${compactSentence(input.insight, 105)} ${input.landingUrl}`,
+    `${compactSentence(`${hook} ${input.insight}`, 215)} ${input.landingUrl}`
+  ];
+
+  return (
+    candidates.find((candidate) => validateDraftText(candidate, input.sources, input.landingUrl).ok) ??
+    forceFitTweet(`${hook} ${compactSentence(input.insight, 80)}`, input.landingUrl)
+  );
 }
 
 type OpenAIResponse = {
@@ -108,4 +128,48 @@ function extractResponseText(response: OpenAIResponse): string {
       .join("")
       .trim() ?? ""
   );
+}
+
+function cleanModelTweet(text: string): string {
+  return text
+    .replace(/^["']|["']$/g, "")
+    .replace(/^(tweet|post|draft)\s*:\s*/i, "")
+    .replace(/\s+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function fallbackHookForPillar(pillar: ContentPillar, variant: number): string {
+  const pillarHooks = HOOKS[pillar];
+  return pillarHooks[variant % pillarHooks.length];
+}
+
+function compactSentence(text: string, maxChars: number): string {
+  if (maxChars <= 0) return "";
+  const cleaned = text
+    .replace(/\s+/g, " ")
+    .replace(/^useful bit:\s*/i, "")
+    .replace(/\s+https?:\/\/\S+/g, "")
+    .trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  const truncated = cleaned.slice(0, maxChars - 1);
+  const lastSpace = truncated.lastIndexOf(" ");
+  const shortened = truncated
+    .slice(0, lastSpace > 24 ? lastSpace : truncated.length)
+    .trim()
+    .replace(/[;,:-]+$/g, "");
+  if (!shortened) return "";
+  return /[.!?]$/.test(shortened) ? shortened : `${shortened}.`;
+}
+
+function forceFitTweet(body: string, landingUrl: string): string {
+  let compactBody = compactSentence(body, 220);
+  let candidate = `${compactBody} ${landingUrl}`;
+
+  while (compactBody.length > 0 && xWeightedLength(candidate) > 280) {
+    compactBody = compactSentence(compactBody, Math.max(0, compactBody.length - 12));
+    candidate = `${compactBody} ${landingUrl}`;
+  }
+
+  return candidate;
 }

@@ -28,7 +28,7 @@ Required for real source generation:
 
 ```bash
 TINYFISH_API_KEY=...
-TINYFISH_AGENT_ENABLED=0
+TINYFISH_AGENT_ENABLED=1
 TINYFISH_AGENT_MAX_RUNS=2
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.2
@@ -51,18 +51,18 @@ No database is required for V1. Drafts are stored in the admin browser tab's `se
 
 1. A human opens `/admin?token=...`, chooses the number of drafts and content pillars, then clicks **Generate drafts**.
 2. `/api/cron/generate` runs TinyFish Search queries for the selected pillars. If the requested count is higher than the number of selected pillars, the generator cycles through them.
-3. The app fetches up to 10 source URLs, merges source evidence, and drafts funny posts.
+3. TinyFish Fetch gets clean text for up to 10 source URLs and the app dedupes that into usable source evidence.
 4. The admin console streams live progress events so reviewers can see search, fetch, TinyFish Agent, LLM, and draft outcomes as they happen.
-5. Optional TinyFish Agent enrichment runs when `TINYFISH_AGENT_ENABLED=1`, using `/v1/automation/run-sse` to inspect top source pages for richer fantasy insights.
-6. Optional LLM joke polish runs when `OPENAI_API_KEY` is set. If the LLM output fails guardrails, the deterministic draft is kept.
+5. TinyFish Agent runs when `TINYFISH_AGENT_ENABLED=1`, using `/v1/automation/run-sse` to inspect the top source page and produce the fantasy insight.
+6. The LLM writes the final funny X post from that insight when `OPENAI_API_KEY` is set. If the LLM is unavailable or fails guardrails, the app uses a short deterministic fallback.
 7. The admin console stores drafts in browser `sessionStorage` for review, editing, approval, and dry-run publishing.
 8. When a human clicks **Publish now**, `/api/admin/publish` validates that selected draft and posts through the official X API, or returns a dry-run result when `X_DRY_RUN=1`.
 
 ## Bot voice
 
-- Witty Scout with medium banter.
-- Joke first, useful insight second, receipts link third.
-- Recurring bits include captaincy crimes, differential goblin hour, rotation weather report, template hydra, bench regret support group, and TinyFish found the receipts.
+- Fantasy insider to fantasy insider: smart, wry, specific, and useful without sounding like a brand account.
+- Joke first, concrete fantasy insight second, proof link third. The URL is the receipt, so posts do not explain it.
+- Recurring bits can hit captain blanks, template panic, rotation risk, ownership traps, deadline scrambling, mini-league receipts, and bench regret.
 - Never mock injuries, attack users, target protected classes, or mention users in v1 posts.
 
 ## Testing
@@ -94,7 +94,7 @@ X_REFRESH_TOKEN
 X_BOT_USER_ID
 ```
 
-For shared demos, keep `X_DRY_RUN=1`. Set `TINYFISH_AGENT_ENABLED=0` for faster/cheaper draft generation, or `1` when you want the richer source-reading Agent pass. Leave `OPENAI_API_KEY` empty to use deterministic jokes only, or set it to let the LLM polish the final tweet copy.
+For shared demos, keep `X_DRY_RUN=1`. Set `TINYFISH_AGENT_ENABLED=1` for the intended Search -> Fetch -> Agent insight -> LLM tweet pipeline, or `0` when you need a faster deterministic fallback. Leave `OPENAI_API_KEY` empty to use deterministic copy only, or set it to let the LLM write the final tweet.
 
 Real posting with `X_DRY_RUN=0` does not require a database, but X may rotate refresh tokens; if that happens, update `X_REFRESH_TOKEN` in Vercel with the newest token.
 

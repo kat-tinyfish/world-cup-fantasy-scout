@@ -4,6 +4,8 @@ import { MemoryStore } from "../store";
 import type { TinyFishClient } from "../tinyfish";
 
 vi.stubEnv("APP_BASE_URL", "https://agent.tinyfish.ai/world-cup-fantasy");
+vi.stubEnv("OPENAI_API_KEY", "");
+vi.stubEnv("TINYFISH_AGENT_ENABLED", "0");
 
 const tinyfish: TinyFishClient = {
   async search() {
@@ -41,7 +43,36 @@ describe("generateDrafts", () => {
     expect(result.created).toHaveLength(1);
     expect(result.created[0].status).toBe("draft");
     expect(result.created[0].sources).toHaveLength(1);
-    expect(result.created[0].text).toContain("TinyFish found the receipts");
+    expect(result.created[0].text).toContain("captain");
+    expect(result.created[0].text).toContain(result.created[0].landingUrl);
+    expect(result.created[0].text).not.toContain("TinyFish found the receipts");
+    expect(result.created[0].generationNotes?.some((note) => note.startsWith("Source insight:"))).toBe(true);
+  });
+
+  it("uses TinyFish Agent insight before the LLM or deterministic tweet writer", async () => {
+    vi.stubEnv("TINYFISH_AGENT_ENABLED", "1");
+    const store = new MemoryStore();
+    const result = await generateDrafts({
+      store,
+      tinyfish: {
+        ...tinyfish,
+        async agentInsight() {
+          return {
+            insight: "Captain switches should be planned before deadline because manual substitutions can rescue a blank.",
+            events: []
+          };
+        }
+      },
+      pillars: ["captaincy_chaos"],
+      now: new Date("2026-05-27T12:00:00Z")
+    });
+
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].sources[0].agentInsight).toContain("Captain switches");
+    expect(result.created[0].text).toContain("Captain switches");
+    expect(result.created[0].generationNotes).toContain(
+      "TinyFish Agent: Captain switches should be planned before deadline because manual substitutions can rescue a blank."
+    );
   });
 
   it("skips drafts when no sources exist", async () => {

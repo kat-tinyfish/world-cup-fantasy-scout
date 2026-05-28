@@ -1,8 +1,8 @@
 import { getEnv } from "./env";
-import { validateDraftText, xWeightedLength } from "./guardrails";
+import { validateDraftText } from "./guardrails";
 import { makeId } from "./ids";
-import { polishDraftWithLlm } from "./llm";
-import { HOOKS, PILLAR_LABELS, PILLAR_QUERIES } from "./personality";
+import { buildFallbackTweet, writeTweetWithLlm } from "./llm";
+import { PILLAR_LABELS, PILLAR_QUERIES } from "./personality";
 import { mergeSearchAndFetch, sourceSummary, type SearchResult } from "./sources";
 import type { Store } from "./store";
 import { TinyFishApiClient, type TinyFishClient } from "./tinyfish";
@@ -136,48 +136,50 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
         emit({ type: "agent:skip", pillar, message });
       }
     } else {
-      const reason = env.tinyfishAgentEnabled
-        ? "TinyFish Agent skipped because max runs for this batch was reached."
-        : "TinyFish Agent skipped. Set TINYFISH_AGENT_ENABLED=1 to enable enrichment.";
+      const reason = !env.tinyfishAgentEnabled
+        ? "TinyFish Agent skipped. Set TINYFISH_AGENT_ENABLED=1 to enable enrichment."
+        : !tinyfish.agentInsight
+          ? "TinyFish Agent skipped because this TinyFish client does not expose Agent insight."
+          : "TinyFish Agent skipped because max runs for this batch was reached.";
       generationNotes.push(reason);
       emit({ type: "agent:skip", pillar, message: reason });
+    }
+
+    const insight = buildSourceBackedInsight(pillar, sources, agentInsight);
+    if (!agentInsight) {
+      generationNotes.push(`Source insight: ${insight}`);
     }
 
     await store.upsertSources(sources);
     let draft = buildDraftFromSources(pillar, sources, now, {
       receiptLinks: options.receiptLinks ?? false,
-      agentInsight,
+      insight,
       generationNotes,
       hookOffset: index
     });
 
-    emit({ type: "llm:start", pillar, message: "Checking whether LLM joke polish is available." });
-    const polish = await polishDraftWithLlm({
+    emit({ type: "llm:start", pillar, message: "Writing the final X post from the source-backed insight." });
+    const tweet = await writeTweetWithLlm({
       pillar,
-      draftText: draft.text,
+      insight,
       landingUrl: draft.landingUrl,
       sources: draft.sources,
-      agentInsight
+      hookVariant: index
     }).catch((error) => ({
       text: draft.text,
       usedLlm: false,
-      note: error instanceof Error ? `LLM polish skipped: ${error.message}` : "LLM polish skipped."
+      note: error instanceof Error ? `LLM tweet writing skipped: ${error.message}` : "LLM tweet writing skipped."
     }));
-    generationNotes.push(polish.note);
-    if (polish.usedLlm) {
-      const validation = validateDraftText(polish.text, draft.sources, draft.landingUrl);
-      draft = {
-        ...draft,
-        text: polish.text,
-        toneScore: validation.toneScore,
-        usefulnessScore: validation.usefulnessScore,
-        generationNotes: [...generationNotes]
-      };
-      emit({ type: "llm:complete", pillar, message: polish.note });
-    } else {
-      draft = { ...draft, generationNotes: [...generationNotes] };
-      emit({ type: "llm:skip", pillar, message: polish.note });
-    }
+    generationNotes.push(tweet.note);
+    const tweetValidation = validateDraftText(tweet.text, draft.sources, draft.landingUrl);
+    draft = {
+      ...draft,
+      text: tweet.text,
+      toneScore: tweetValidation.toneScore,
+      usefulnessScore: tweetValidation.usefulnessScore,
+      generationNotes: [...generationNotes]
+    };
+    emit({ type: tweet.usedLlm ? "llm:complete" : "llm:skip", pillar, message: tweet.note });
 
     const duplicate = await store.findSimilarDraft(draft.text);
     if (duplicate) {
@@ -227,11 +229,18 @@ export function buildDraftFromSources(
   pillar: ContentPillar,
   sources: Source[],
   now = new Date(),
-  options: { receiptLinks?: boolean; agentInsight?: string | null; generationNotes?: string[]; hookOffset?: number } = {}
+  options: { receiptLinks?: boolean; insight?: string | null; generationNotes?: string[]; hookOffset?: number } = {}
 ): DraftPost {
   const id = makeId("draft");
   const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, options.receiptLinks ? id : undefined);
-  const text = composePostText(pillar, sources, landingUrl, options.hookOffset ?? 0, options.agentInsight);
+  const insight = options.insight || buildSourceBackedInsight(pillar, sources);
+  const text = buildFallbackTweet({
+    pillar,
+    insight,
+    landingUrl,
+    sources,
+    hookVariant: options.hookOffset ?? 0
+  });
   const validation = validateDraftText(text, sources, landingUrl);
   const timestamp = now.toISOString();
 
@@ -257,9 +266,14 @@ export function buildDraftFromSources(
 }
 
 export function regenerateJoke(draft: DraftPost): DraftPost {
-  const hook = pickHook(draft.pillar, draft.id.length + 1);
-  const insight = extractInsight(draft.pillar, draft.sources);
-  const text = trimForX(`${hook} ${insight} TinyFish found the receipts: ${draft.landingUrl}`);
+  const insight = buildSourceBackedInsight(draft.pillar, draft.sources);
+  const text = buildFallbackTweet({
+    pillar: draft.pillar,
+    insight,
+    landingUrl: draft.landingUrl,
+    sources: draft.sources,
+    hookVariant: draft.text.length + 1
+  });
   const validation = validateDraftText(text, draft.sources, draft.landingUrl);
   return {
     ...draft,
@@ -273,7 +287,14 @@ export function regenerateJoke(draft: DraftPost): DraftPost {
 export function regenerateInsight(draft: DraftPost): DraftPost {
   const rotatedSources = [...draft.sources.slice(1), draft.sources[0]].filter(Boolean);
   const sources = rotatedSources.length ? rotatedSources : draft.sources;
-  const text = composePostText(draft.pillar, sources, draft.landingUrl, 1);
+  const insight = buildSourceBackedInsight(draft.pillar, sources);
+  const text = buildFallbackTweet({
+    pillar: draft.pillar,
+    insight,
+    landingUrl: draft.landingUrl,
+    sources,
+    hookVariant: draft.text.length + 2
+  });
   const validation = validateDraftText(text, sources, draft.landingUrl);
   return {
     ...draft,
@@ -311,81 +332,43 @@ async function runPillarSearches(tinyfish: TinyFishClient, pillar: ContentPillar
     .slice(0, 10);
 }
 
-function composePostText(
-  pillar: ContentPillar,
-  sources: Source[],
-  landingUrl: string,
-  hookOffset = 0,
-  agentInsight?: string | null
-): string {
-  const hook = pickHook(pillar, sources.length + hookOffset);
-  const insight = extractInsight(pillar, sources, agentInsight);
-  return trimForX(`${hook} ${insight} TinyFish found the receipts: ${landingUrl}`);
-}
-
-function pickHook(pillar: ContentPillar, offset: number): string {
-  const hooks = HOOKS[pillar];
-  return hooks[offset % hooks.length];
-}
-
-function extractInsight(pillar: ContentPillar, sources: Source[], agentInsight?: string | null): string {
+export function buildSourceBackedInsight(pillar: ContentPillar, sources: Source[], agentInsight?: string | null): string {
   const source = sources[0];
-  const enrichedInsight = agentInsight || source.agentInsight;
+  const enrichedInsight = cleanInsight(agentInsight || source?.agentInsight || "");
   if (enrichedInsight) {
-    return `Useful bit: ${enrichedInsight}`;
+    return enrichedInsight;
   }
 
-  const summary = sourceSummary(source);
-  const title = source.title.replace(/\s+/g, " ").trim();
-  const label = PILLAR_LABELS[pillar].toLowerCase();
+  const title = cleanSourceTitle(source);
 
   if (pillar === "built_with_tinyfish") {
-    return `Useful bit: this scout is built from search plus fetch, so the ${label} comes with source links instead of vibes.`;
+    return "Search finds the fantasy mess and Fetch turns the page into clean text, so the scout note starts with evidence instead of timeline vibes.";
   }
 
-  if (/captain/i.test(label)) {
-    return `Useful bit: captain and substitution planning should track ${title}; if the first punt blanks, pivot with a source in hand.`;
-  }
+  const templates: Record<Exclude<ContentPillar, "built_with_tinyfish">, string> = {
+    daily_scout: `Use ${title} before deadline; rules and news beat letting the template pick your team for you.`,
+    differential_radar: `Treat ${title} as a shortlist starter; differential punts need minutes, role, and ownership context.`,
+    captaincy_chaos: `Build captain switches from ${title}; captaincy is two deadlines in a trench coat, not one brave button.`,
+    lineup_news_watch: `Check ${title} before locking a lineup; rotation risk is where tidy drafts lose their shoes.`,
+    template_panic_meter: `Compare the template against ${title}; ownership is useful signal, not permission to stop thinking.`,
+    mini_league_banter: `Drop ${title} before deadline; sourced mini-league banter beats screenshot astrology.`
+  };
 
-  if (/lineup|rotation/i.test(label)) {
-    return `Useful bit: watch ${title} before locking a lineup; rotation risk is where tidy drafts go to get silly.`;
-  }
-
-  if (/differential/i.test(label)) {
-    return `Useful bit: differential hunting starts with ${title}; ownership punts need a real source, not just goblin confidence.`;
-  }
-
-  if (/mini-league/i.test(label)) {
-    return `Useful bit: share ${title} before deadline so your mini-league banter has evidence and not just vibes in a trench coat.`;
-  }
-
-  return `Useful bit: ${summary || title} Watch the source before the deadline and do not let the template hydra drive.`;
+  return templates[pillar];
 }
 
-function trimForX(text: string): string {
-  if (xWeightedLength(text) <= 280) return text;
-
-  const receiptMarker = "TinyFish found the receipts:";
-  const receiptIndex = text.lastIndexOf(receiptMarker);
-  if (receiptIndex >= 0) {
-    const suffix = text.slice(receiptIndex).trim();
-    let body = text.slice(0, receiptIndex).trimEnd();
-    while (body.length > 0 && xWeightedLength(`${body} ${suffix}`) > 280) {
-      body = body.slice(0, -1).trimEnd();
-    }
-    return `${body} ${suffix}`;
+function cleanSourceTitle(source?: Source): string {
+  if (!source) return "the latest source";
+  const title = source.title.replace(/\s+/g, " ").trim();
+  if (title && title.toLowerCase() !== "untitled source") {
+    return title.length > 64 ? `${title.slice(0, 61).trim()}...` : title;
   }
+  const summary = sourceSummary(source);
+  return summary ? "this source" : source.siteName || "the latest source";
+}
 
-  const urlMatch = text.match(/https?:\/\/\S+$/);
-  const url = urlMatch?.[0] ?? "";
-  let withoutUrl = url ? text.slice(0, -url.length).trimEnd() : text;
-  const suffix = url ? ` ${url}` : "";
-
-  while (withoutUrl.length > 0 && xWeightedLength(`${withoutUrl}...${suffix}`) > 280) {
-    withoutUrl = withoutUrl.slice(0, -1).trimEnd();
-  }
-
-  return `${withoutUrl}...${suffix}`;
+function cleanInsight(value: string): string {
+  return value.replace(/\s+/g, " ").replace(/^useful bit:\s*/i, "").trim();
 }
 
 function hasUsableSourceText(source: Source): boolean {

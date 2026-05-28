@@ -5,7 +5,7 @@ export default function LandingPage() {
     <main>
       <section className="hero">
         <div className="eyebrow">World Cup Fantasy chaos desk</div>
-        <h1>The fantasy scout with jokes, receipts, and a tiny goblin whistle.</h1>
+        <h1>The fantasy scout with jokes, receipts, and deadline-chaos instincts.</h1>
         <p className="hero-copy">
           TinyFish Scout turns the noisy World Cup Fantasy research swamp into funny, source-backed daily
           notes for captains, differentials, lineup chaos, and mini-league banter.
@@ -77,5 +77,5 @@ const pillarCopy: Record<keyof typeof PILLAR_LABELS, string> = {
   lineup_news_watch: "Rotation risk, predicted lineups, and team news without pretending uncertainty is illegal.",
   template_panic_meter: "A gentle alarm for when everyone owns the same player and calls it independent thinking.",
   mini_league_banter: "Shareable prompts, little roasts, and receipts for group chats with too much confidence.",
-  built_with_tinyfish: "Behind-the-scenes posts showing builders how Search and Fetch power the scout."
+  built_with_tinyfish: "Behind-the-scenes posts showing curious fantasy insiders how Search and Fetch power the scout."
 };

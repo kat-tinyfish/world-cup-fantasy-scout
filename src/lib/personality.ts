@@ -2,11 +2,11 @@ import type { ContentPillar } from "./types";
 
 export const PILLAR_LABELS: Record<ContentPillar, string> = {
   daily_scout: "Daily Scout",
-  differential_radar: "Differential Goblin Hour",
+  differential_radar: "Differential Radar",
   captaincy_chaos: "Captaincy Chaos Planner",
-  lineup_news_watch: "Rotation Weather Report",
+  lineup_news_watch: "Lineup News Watch",
   template_panic_meter: "Template Panic Meter",
-  mini_league_banter: "Mini-League Banter",
+  mini_league_banter: "Mini-League Ammo",
   built_with_tinyfish: "Built with TinyFish"
 };
 
@@ -43,32 +43,32 @@ export const PILLAR_QUERIES: Record<ContentPillar, string[]> = {
 
 export const HOOKS: Record<ContentPillar, string[]> = {
   daily_scout: [
-    "The scout notebook is open and already judging everyone's life choices.",
-    "Today's World Cup Fantasy soup contains one useful tip and three floating anxieties."
+    "The scout note is short because kickoff waits for no spreadsheet.",
+    "One useful read, zero homework cosplay."
   ],
   differential_radar: [
-    "Differential goblin hour has arrived wearing tiny boots and a questionable grin.",
-    "The under-owned cupboard is open. Please do not lick the mystery asset."
+    "Tiny edge, big consequences.",
+    "Differential shopping rule: if it feels too clever, check the minutes twice."
   ],
   captaincy_chaos: [
-    "Captaincy crimes court is now in session.",
-    "Captaincy plan: start brave, pivot sober, avoid becoming the Joker by kickoff two."
+    "Captaincy plan before the group chat becomes a courtroom.",
+    "Start brave, pivot sober."
   ],
   lineup_news_watch: [
-    "Rotation weather report: scattered panic with a chance of bench regret.",
-    "The lineup gremlins are tapping on the glass again."
+    "Lineup watch, aka certainty wearing a fake mustache.",
+    "Rotation risk remains undefeated and deeply annoying."
   ],
   template_panic_meter: [
-    "Template hydra status: one head grew back and it owns the same midfielder as everyone else.",
-    "The template panic meter is humming like a haunted refrigerator."
+    "Template panic check.",
+    "If everyone owns him, that is not a scouting department. That is a queue."
   ],
   mini_league_banter: [
-    "Mini-league diplomacy update: your group chat is one captain blank away from becoming a tribunal.",
-    "Bench regret support group meets after the deadline. Bring screenshots and denial."
+    "Mini-league ammo for the person already rehearsing excuses.",
+    "Group chat peace was never an option."
   ],
   built_with_tinyfish: [
-    "TinyFish found the receipts, which is rude but useful.",
-    "We sent TinyFish into the fantasy mines and it came back holding sources."
+    "Receipts first, vibes on probation.",
+    "Search found the mess. Fetch made it readable."
   ]
 };
 
@@ -83,23 +83,35 @@ export const USEFULNESS_MARKERS = [
   "guide",
   "rules",
   "watch",
+  "search",
+  "fetch",
+  "evidence",
+  "fantasy",
+  "template",
   "if",
   "because"
 ];
 
 export const FUNNY_MARKERS = [
-  "goblin",
   "chaos",
   "crimes",
-  "hydra",
   "panic",
   "roulette",
   "regret",
-  "tiny hat",
-  "gremlin",
-  "tribunal",
-  "haunted",
-  "joker",
-  "soup",
-  "receipts"
+  "group chat",
+  "courtroom",
+  "trench coat",
+  "vibes",
+  "fake mustache",
+  "personality test",
+  "astrology",
+  "excuses",
+  "sober",
+  "homework cosplay",
+  "queue",
+  "probation",
+  "mess",
+  "receipts",
+  "blank",
+  "template"
 ];

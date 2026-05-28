@@ -77,7 +77,7 @@ export function AdminConsole({ token }: { token: string }) {
         count: String(draftCount),
         pillars: selectedPillars.join(",")
       });
-      setMessage(`Generating ${draftCount} draft(s). The goblin is reading with intent.`);
+      setMessage(`Generating ${draftCount} draft(s). The scout is checking receipts and resisting captaincy overthinking.`);
       const response = await fetch(`/api/cron/generate?${params.toString()}`, {
         cache: "no-store"
       });
@@ -142,7 +142,7 @@ export function AdminConsole({ token }: { token: string }) {
         return;
       }
       updateDraft(id, data.draft);
-      setMessage("Draft regenerated. Still smells like football panic, but legally distinct.");
+      setMessage("Draft regenerated. Still insider-y, less nonsense.");
     });
   }
 
@@ -234,7 +234,7 @@ export function AdminConsole({ token }: { token: string }) {
           <span>{generationLog.length} event(s)</span>
         </div>
         {generationLog.length === 0 ? (
-          <p>No generation events yet. Click generate and the scout goblin will narrate the crime scene.</p>
+          <p>No generation events yet. Click generate and the scout will narrate the search, fetch, Agent, and LLM steps.</p>
         ) : (
           <ol className="progress-list">
             {generationLog.map((event, index) => (
