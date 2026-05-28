@@ -21,13 +21,6 @@ async function generate(request: Request) {
   const store = createStore();
   const result = await generateDrafts({ store });
 
-  if (request.method === "POST") {
-    const token = await formTokenOrQueryToken(request);
-    return NextResponse.redirect(new URL(`/admin?token=${encodeURIComponent(token ?? "")}`, request.url), {
-      status: 303
-    });
-  }
-
   return NextResponse.json(result);
 }
 
@@ -38,12 +31,4 @@ async function hasValidFormToken(request: Request): Promise<boolean> {
   if (!form) return false;
   const token = String(form.get("token") ?? "");
   return token === process.env.ADMIN_APPROVAL_TOKEN;
-}
-
-async function formTokenOrQueryToken(request: Request): Promise<string | null> {
-  const queryToken = new URL(request.url).searchParams.get("token");
-  if (queryToken) return queryToken;
-  const clone = request.clone();
-  const form = await clone.formData().catch(() => null);
-  return form ? String(form.get("token") ?? "") : null;
 }

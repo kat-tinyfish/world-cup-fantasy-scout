@@ -9,12 +9,10 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "next typegen && tsc --noEmit",
-    "init-db": "tsx scripts/init-db.ts"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "next": "^15.5.0",
-    "postgres": "^3.4.7",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

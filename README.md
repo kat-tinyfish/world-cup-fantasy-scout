@@ -7,10 +7,10 @@ The bot drafts funny fantasy posts, attaches TinyFish-powered receipts, and wait
 ## What it ships
 
 - Public campaign landing page at `/`
-- Per-draft receipts pages at `/receipts/:id`
+- Per-draft receipts pages at `/receipts/:id` for future durable-storage mode
 - Admin approval queue at `/admin?token=ADMIN_APPROVAL_TOKEN`
-- Cron draft generator at `/api/cron/generate`
-- Cron publisher at `/api/cron/publish`
+- On-demand draft generator at `/api/cron/generate`
+- Session-based publishing from the admin console
 - Lead capture at `/api/leads`
 - TinyFish Search and Fetch clients
 - Official X API publisher using `POST /2/tweets`
@@ -39,18 +39,17 @@ X_REFRESH_TOKEN=...
 X_BOT_USER_ID=...
 APP_BASE_URL=https://agent.tinyfish.ai/world-cup-fantasy
 ADMIN_APPROVAL_TOKEN=...
-DATABASE_URL=...
 ```
 
-If `DATABASE_URL` is missing, the app uses `.data/scout.json` for local development only.
+No database is required for V1. Drafts are stored in the admin browser tab's `sessionStorage` and are discarded when that browser session ends. This is intentional: drafts are review artifacts, not durable campaign records.
 
 ## Operational flow
 
-1. `/api/cron/generate` runs TinyFish Search queries for each content pillar.
-2. The app fetches up to 10 source URLs, merges source evidence, and drafts funny posts.
-3. Guardrails reject bland, uncited, unsafe, too-long, or user-mentioning drafts.
-4. A human reviews drafts at `/admin?token=...`, edits if needed, and approves.
-5. `/api/cron/publish` posts only approved due drafts through the official X API.
+1. A human opens `/admin?token=...` and clicks **Generate drafts**.
+2. `/api/cron/generate` runs TinyFish Search queries for each content pillar.
+3. The app fetches up to 10 source URLs, merges source evidence, and drafts funny posts.
+4. The admin console stores drafts in browser `sessionStorage` for review, editing, approval, and dry-run publishing.
+5. When a human clicks **Publish now**, `/api/admin/publish` validates that selected draft and posts through the official X API, or returns a dry-run result when `X_DRY_RUN=1`.
 
 ## Bot voice
 
@@ -68,3 +67,22 @@ npm run build
 ```
 
 The tests cover UTM links, source dedupe, guardrails, draft generation, and the X publisher dry-run/official-endpoint path.
+
+## Vercel deployment
+
+Set these environment variables in Vercel:
+
+```bash
+TINYFISH_API_KEY
+APP_BASE_URL
+ADMIN_APPROVAL_TOKEN
+X_DRY_RUN
+X_CLIENT_ID
+X_CLIENT_SECRET
+X_REFRESH_TOKEN
+X_BOT_USER_ID
+```
+
+For shared demos, keep `X_DRY_RUN=1`. Real posting with `X_DRY_RUN=0` does not require a database, but X may rotate refresh tokens; if that happens, update `X_REFRESH_TOKEN` in Vercel with the newest token.
+
+No Vercel cron schedule is configured for V1. Draft generation should be triggered from the admin console so ephemeral drafts stay in the reviewer's browser session instead of being generated and discarded in a background job.

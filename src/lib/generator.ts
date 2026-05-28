@@ -23,6 +23,7 @@ export type GenerateDraftsOptions = {
   tinyfish?: TinyFishClient;
   pillars?: ContentPillar[];
   now?: Date;
+  receiptLinks?: boolean;
 };
 
 export type GenerateDraftsResult = {
@@ -55,7 +56,9 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
     }
 
     await store.upsertSources(sources);
-    const draft = buildDraftFromSources(pillar, sources, now);
+    const draft = buildDraftFromSources(pillar, sources, now, {
+      receiptLinks: options.receiptLinks ?? false
+    });
     const duplicate = await store.findSimilarDraft(draft.text);
     if (duplicate) {
       skipped.push({ pillar, reason: `Duplicate draft ${duplicate.id}.` });
@@ -79,9 +82,14 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
   return { created, skipped };
 }
 
-export function buildDraftFromSources(pillar: ContentPillar, sources: Source[], now = new Date()): DraftPost {
+export function buildDraftFromSources(
+  pillar: ContentPillar,
+  sources: Source[],
+  now = new Date(),
+  options: { receiptLinks?: boolean } = {}
+): DraftPost {
   const id = makeId("draft");
-  const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, id);
+  const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, options.receiptLinks ? id : undefined);
   const text = composePostText(pillar, sources, landingUrl);
   const validation = validateDraftText(text, sources, landingUrl);
   const timestamp = now.toISOString();
