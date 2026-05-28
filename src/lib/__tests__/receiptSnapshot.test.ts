@@ -21,8 +21,7 @@ describe("receipt snapshots", () => {
       draftId: "draft_123",
       pillar: "captaincy_chaos",
       insight: "Build captain switches before deadline.",
-      sources: [source],
-      generationNotes: ["TinyFish Agent: Manual substitutions make captaincy a two-step decision."]
+      sources: [source]
     });
 
     const decoded = decodeReceiptSnapshot(encodeReceiptSnapshot(snapshot));
@@ -38,5 +37,6 @@ describe("receipt snapshots", () => {
       fetchedText: source.fetchedText,
       agentInsight: source.agentInsight
     });
+    expect("generationNotes" in (decoded ?? {})).toBe(false);
   });
 });

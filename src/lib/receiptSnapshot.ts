@@ -6,7 +6,6 @@ export type ReceiptSnapshot = {
   draftId: string;
   pillar: ContentPillar;
   insight: string;
-  generationNotes: string[];
   sources: ReceiptSnapshotSource[];
 };
 
@@ -17,14 +16,12 @@ export function buildReceiptSnapshot(input: {
   pillar: ContentPillar;
   insight: string;
   sources: Source[];
-  generationNotes?: string[];
 }): ReceiptSnapshot {
   return {
     v: 1,
     draftId: input.draftId,
     pillar: input.pillar,
     insight: excerpt(input.insight, 420),
-    generationNotes: (input.generationNotes ?? []).map((note) => excerpt(note, 360)).slice(0, 8),
     sources: input.sources.slice(0, 4).map((source) => ({
       url: source.url,
       title: excerpt(source.title, 160),

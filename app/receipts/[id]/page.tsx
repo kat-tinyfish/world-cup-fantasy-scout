@@ -10,11 +10,11 @@ type ReceiptView = {
   id: string;
   pillar: ContentPillar;
   text: string | null;
-  insight: string | null;
-  generationNotes: string[];
+  coachAnalysis: string | null;
   sources: Source[];
-  isSnapshot: boolean;
 };
+
+type CoachAnalysisSource = Pick<Source, "agentInsight">;
 
 export default async function ReceiptPage({
   params,
@@ -36,10 +36,10 @@ export default async function ReceiptPage({
     <main>
       <section className="hero compact">
         <div className="eyebrow">{PILLAR_LABELS[receipt.pillar]}</div>
-        <h1>The receipts behind the scout note.</h1>
+        <h1>The proof behind the scout note.</h1>
         <p className="hero-copy">
           {receipt.text ??
-            "This page carries the source trail embedded in the X link: Search results, Fetch excerpts, and the Agent/insight pass behind the post."}
+            "Here is the public proof: the links TinyFish found, the clean source excerpts it pulled, and the coach analysis behind the post."}
         </p>
         <div className="hero-actions">
           <a className="button primary" href="/#signup">
@@ -53,25 +53,22 @@ export default async function ReceiptPage({
 
       <section className="receipt-panel">
         <div>
-          <p className="eyebrow">Scout trail</p>
-          <h2>Search found it. Fetch cleaned it. Agent pulled the angle.</h2>
+          <p className="eyebrow">Proof desk</p>
+          <h2>Search found the hidden intel. Fetch got the clean tackle. Agent did the coaching.</h2>
         </div>
         <ol>
-          <li>Search surfaced {receipt.sources.length} source link(s) for this draft.</li>
-          <li>Fetch extracted readable snippets so the reviewer can see the evidence without opening every tab.</li>
+          <li>TinyFish Search found {receipt.sources.length} useful source link(s) hiding in the pre-deadline noise.</li>
+          <li>TinyFish Fetch got the clean tackle: readable excerpts without the tab swamp.</li>
           <li>
-            {receipt.insight
-              ? `Scout insight: ${receipt.insight}`
-              : "Agent insight was not available for this draft, so the app used the fetched source text."}
+            {receipt.coachAnalysis
+              ? `TinyFish Agent did the coaching: ${receipt.coachAnalysis}`
+              : "TinyFish Agent did the coaching from the source evidence above."}
           </li>
         </ol>
       </section>
 
       <section className="source-list">
-        <h2>Sources behind this scout note</h2>
-        {receipt.isSnapshot ? (
-          <p className="source-note">This receipt snapshot is embedded in the tweet link, so it still works without a database.</p>
-        ) : null}
+        <h2>Hidden intel and clean tackles</h2>
         {receipt.sources.map((source) => (
           <article className="source-card" key={source.id}>
             <div>
@@ -83,35 +80,22 @@ export default async function ReceiptPage({
             </h3>
             {source.snippet ? (
               <p>
-                <strong>Search snippet:</strong> {source.snippet}
+                <strong>Hidden intel:</strong> {source.snippet}
               </p>
             ) : null}
             {source.fetchedText ? (
               <p>
-                <strong>Fetched excerpt:</strong> {source.fetchedText.slice(0, 520)}
+                <strong>Clean tackle:</strong> {source.fetchedText.slice(0, 520)}
               </p>
             ) : null}
             {source.agentInsight ? (
               <p>
-                <strong>Agent takeaway:</strong> {source.agentInsight}
+                <strong>Coach analysis:</strong> {source.agentInsight}
               </p>
             ) : null}
           </article>
         ))}
       </section>
-
-      {receipt.generationNotes.length ? (
-        <section className="source-list">
-          <h2>Generation notes</h2>
-          <article className="source-card">
-            <ul>
-              {receipt.generationNotes.map((note, index) => (
-                <li key={`${receipt.id}-note-${index}`}>{note}</li>
-              ))}
-            </ul>
-          </article>
-        </section>
-      ) : null}
     </main>
   );
 }
@@ -122,10 +106,8 @@ function receiptFromDraft(draft: DraftPost): ReceiptView {
     id: draft.id,
     pillar: draft.pillar,
     text,
-    insight: extractInsight(draft.generationNotes ?? [], draft.sources),
-    generationNotes: draft.generationNotes ?? [],
-    sources: draft.sources,
-    isSnapshot: false
+    coachAnalysis: extractCoachAnalysis(draft.generationNotes ?? [], draft.sources),
+    sources: draft.sources
   };
 }
 
@@ -134,8 +116,7 @@ function receiptFromSnapshot(snapshot: ReceiptSnapshot): ReceiptView {
     id: snapshot.draftId,
     pillar: snapshot.pillar,
     text: null,
-    insight: snapshot.insight,
-    generationNotes: snapshot.generationNotes,
+    coachAnalysis: extractCoachAnalysis([], snapshot.sources) ?? snapshot.insight,
     sources: snapshot.sources.map((source, index) => ({
       id: `${snapshot.draftId}-source-${index}`,
       url: source.url,
@@ -147,15 +128,17 @@ function receiptFromSnapshot(snapshot: ReceiptSnapshot): ReceiptView {
       agentInsight: source.agentInsight,
       discoveredAt: "",
       usedInDraftIds: [snapshot.draftId]
-    })),
-    isSnapshot: true
+    }))
   };
 }
 
-function extractInsight(notes: string[], sources: Source[]): string | null {
+function extractCoachAnalysis(notes: string[], sources: CoachAnalysisSource[]): string | null {
+  const agentInsight = sources.find((source) => source.agentInsight)?.agentInsight;
+  if (agentInsight) return agentInsight;
+
   const note = notes.find((item) => item.startsWith("TinyFish Agent: ") || item.startsWith("Source insight: "));
   if (note) {
     return note.replace(/^TinyFish Agent:\s*/, "").replace(/^Source insight:\s*/, "");
   }
-  return sources.find((source) => source.agentInsight)?.agentInsight ?? null;
+  return null;
 }

@@ -239,7 +239,6 @@ export function buildDraftFromSources(
     pillar,
     sources,
     insight,
-    generationNotes: options.generationNotes ?? [],
     receiptLinks: options.receiptLinks ?? true
   });
   const text = buildFallbackTweet({
@@ -280,7 +279,6 @@ export function regenerateJoke(draft: DraftPost): DraftPost {
     pillar: draft.pillar,
     sources: draft.sources,
     insight,
-    generationNotes: draft.generationNotes ?? [],
     receiptLinks: isReceiptLink(draft.landingUrl)
   });
   const text = buildFallbackTweet({
@@ -310,7 +308,6 @@ export function regenerateInsight(draft: DraftPost): DraftPost {
     pillar: draft.pillar,
     sources,
     insight,
-    generationNotes: draft.generationNotes ?? [],
     receiptLinks: isReceiptLink(draft.landingUrl)
   });
   const text = buildFallbackTweet({
@@ -402,7 +399,6 @@ function buildLandingUrl(input: {
   pillar: ContentPillar;
   sources: Source[];
   insight: string;
-  generationNotes: string[];
   receiptLinks: boolean;
 }): string {
   if (!input.receiptLinks) {
@@ -414,8 +410,7 @@ function buildLandingUrl(input: {
       draftId: input.id,
       pillar: input.pillar,
       insight: input.insight,
-      sources: input.sources,
-      generationNotes: input.generationNotes
+      sources: input.sources
     })
   );
 
