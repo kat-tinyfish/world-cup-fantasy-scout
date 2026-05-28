@@ -19,6 +19,7 @@ export type Source = {
   snippet: string;
   publishedDate: string | null;
   fetchedText: string | null;
+  agentInsight?: string | null;
   discoveredAt: string;
   usedInDraftIds: string[];
 };
@@ -35,6 +36,7 @@ export type DraftPost = {
   scheduledFor: string;
   approvedBy: string | null;
   publishedPostId: string | null;
+  generationNotes?: string[];
   createdAt: string;
   updatedAt: string;
 };

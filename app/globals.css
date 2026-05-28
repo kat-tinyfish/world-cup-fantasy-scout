@@ -142,6 +142,7 @@ button {
 .card,
 .receipt-panel,
 .signup,
+.progress-panel,
 .source-card,
 .draft-card,
 .admin-login {
@@ -220,6 +221,46 @@ textarea {
 
 .draft-card textarea {
   min-height: 140px;
+}
+
+.progress-panel {
+  margin-bottom: 24px;
+}
+
+.progress-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-list li {
+  border-left: 5px solid var(--moss);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.progress-list span {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--moss);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.progress-list strong {
+  font-size: 0.9rem;
+}
+
+.progress-list p,
+.generation-notes p {
+  margin-bottom: 0;
+}
+
+.generation-notes {
+  margin-top: 16px;
 }
 
 .draft-meta,

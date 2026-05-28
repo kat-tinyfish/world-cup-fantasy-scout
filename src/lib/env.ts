@@ -1,8 +1,11 @@
 export type AppEnv = {
   tinyfishApiKey: string | undefined;
+  tinyfishAgentEnabled: boolean;
+  tinyfishAgentMaxRuns: number;
+  openaiApiKey: string | undefined;
+  openaiModel: string;
   appBaseUrl: string;
   adminApprovalToken: string | undefined;
-  databaseUrl: string | undefined;
   xClientId: string | undefined;
   xClientSecret: string | undefined;
   xRefreshToken: string | undefined;
@@ -14,9 +17,12 @@ export type AppEnv = {
 export function getEnv(): AppEnv {
   return {
     tinyfishApiKey: process.env.TINYFISH_API_KEY,
+    tinyfishAgentEnabled: process.env.TINYFISH_AGENT_ENABLED === "1",
+    tinyfishAgentMaxRuns: Number(process.env.TINYFISH_AGENT_MAX_RUNS ?? "2"),
+    openaiApiKey: process.env.OPENAI_API_KEY,
+    openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.2",
     appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:3000",
     adminApprovalToken: process.env.ADMIN_APPROVAL_TOKEN,
-    databaseUrl: process.env.DATABASE_URL,
     xClientId: process.env.X_CLIENT_ID,
     xClientSecret: process.env.X_CLIENT_SECRET,
     xRefreshToken: process.env.X_REFRESH_TOKEN,

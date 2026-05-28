@@ -1,6 +1,7 @@
 import { getEnv } from "./env";
 import { validateDraftText, xWeightedLength } from "./guardrails";
 import { makeId } from "./ids";
+import { polishDraftWithLlm } from "./llm";
 import { HOOKS, PILLAR_LABELS, PILLAR_QUERIES } from "./personality";
 import { mergeSearchAndFetch, sourceSummary, type SearchResult } from "./sources";
 import type { Store } from "./store";
@@ -24,6 +25,7 @@ export type GenerateDraftsOptions = {
   pillars?: ContentPillar[];
   now?: Date;
   receiptLinks?: boolean;
+  onProgress?: (event: GenerationProgressEvent) => void;
 };
 
 export type GenerateDraftsResult = {
@@ -31,43 +33,157 @@ export type GenerateDraftsResult = {
   skipped: Array<{ pillar: ContentPillar; reason: string }>;
 };
 
+export type GenerationProgressEvent = {
+  type:
+    | "batch:start"
+    | "pillar:start"
+    | "search:start"
+    | "search:complete"
+    | "fetch:start"
+    | "fetch:complete"
+    | "agent:start"
+    | "agent:progress"
+    | "agent:complete"
+    | "agent:skip"
+    | "llm:start"
+    | "llm:complete"
+    | "llm:skip"
+    | "draft:created"
+    | "draft:skipped"
+    | "batch:complete";
+  pillar?: ContentPillar;
+  message: string;
+  count?: number;
+};
+
 export async function generateDrafts(options: GenerateDraftsOptions): Promise<GenerateDraftsResult> {
   const store = options.store;
   const tinyfish = options.tinyfish ?? new TinyFishApiClient();
   const now = options.now ?? new Date();
+  const env = getEnv();
+  const pillars = options.pillars ?? DEFAULT_PILLARS;
   const created: DraftPost[] = [];
   const skipped: GenerateDraftsResult["skipped"] = [];
+  let agentRuns = 0;
+  const emit = options.onProgress ?? (() => undefined);
 
   await store.ensureReady();
+  emit({
+    type: "batch:start",
+    message: `Starting ${pillars.length} content pillar(s).`,
+    count: pillars.length
+  });
 
-  for (const pillar of options.pillars ?? DEFAULT_PILLARS) {
+  for (const pillar of pillars) {
+    emit({ type: "pillar:start", pillar, message: `Starting ${PILLAR_LABELS[pillar]}.` });
+    emit({
+      type: "search:start",
+      pillar,
+      message: `Searching ${PILLAR_QUERIES[pillar].length} query pattern(s).`
+    });
     const searchResults = await runPillarSearches(tinyfish, pillar);
+    emit({ type: "search:complete", pillar, message: `Found ${searchResults.length} result(s).`, count: searchResults.length });
     if (!searchResults.length) {
       skipped.push({ pillar, reason: "No source results." });
+      emit({ type: "draft:skipped", pillar, message: "Skipped: no source results." });
       continue;
     }
 
     const urls = searchResults.map((result) => result.url).filter(Boolean).slice(0, 10);
+    emit({ type: "fetch:start", pillar, message: `Fetching ${urls.length} source URL(s).`, count: urls.length });
     const fetchedResults = await tinyfish.fetch(urls);
+    emit({ type: "fetch:complete", pillar, message: `Fetched ${fetchedResults.length} source page(s).`, count: fetchedResults.length });
     const sources = mergeSearchAndFetch(searchResults, fetchedResults, now).filter(hasUsableSourceText).slice(0, 4);
     if (!sources.length) {
       skipped.push({ pillar, reason: "No usable fetched or snippet text." });
+      emit({ type: "draft:skipped", pillar, message: "Skipped: no usable fetched or snippet text." });
       continue;
     }
 
+    const generationNotes: string[] = [];
+    let agentInsight: string | null = null;
+    const shouldRunAgent =
+      env.tinyfishAgentEnabled && Boolean(tinyfish.agentInsight) && agentRuns < env.tinyfishAgentMaxRuns;
+
+    if (shouldRunAgent) {
+      agentRuns += 1;
+      emit({ type: "agent:start", pillar, message: `TinyFish Agent is reading ${sources[0].siteName}.` });
+      try {
+        const agentResult = await tinyfish.agentInsight?.({
+          url: sources[0].url,
+          pillarLabel: PILLAR_LABELS[pillar],
+          sourceTitle: sources[0].title,
+          onEvent: (event) =>
+            emit({
+              type: event.type === "complete" ? "agent:complete" : "agent:progress",
+              pillar,
+              message: event.message
+            })
+        });
+        agentInsight = agentResult?.insight ?? null;
+        if (agentInsight) {
+          sources[0] = { ...sources[0], agentInsight };
+          generationNotes.push(`TinyFish Agent: ${agentInsight}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "TinyFish Agent failed.";
+        generationNotes.push(message);
+        emit({ type: "agent:skip", pillar, message });
+      }
+    } else {
+      const reason = env.tinyfishAgentEnabled
+        ? "TinyFish Agent skipped because max runs for this batch was reached."
+        : "TinyFish Agent skipped. Set TINYFISH_AGENT_ENABLED=1 to enable enrichment.";
+      generationNotes.push(reason);
+      emit({ type: "agent:skip", pillar, message: reason });
+    }
+
     await store.upsertSources(sources);
-    const draft = buildDraftFromSources(pillar, sources, now, {
-      receiptLinks: options.receiptLinks ?? false
+    let draft = buildDraftFromSources(pillar, sources, now, {
+      receiptLinks: options.receiptLinks ?? false,
+      agentInsight,
+      generationNotes
     });
+
+    emit({ type: "llm:start", pillar, message: "Checking whether LLM joke polish is available." });
+    const polish = await polishDraftWithLlm({
+      pillar,
+      draftText: draft.text,
+      landingUrl: draft.landingUrl,
+      sources: draft.sources,
+      agentInsight
+    }).catch((error) => ({
+      text: draft.text,
+      usedLlm: false,
+      note: error instanceof Error ? `LLM polish skipped: ${error.message}` : "LLM polish skipped."
+    }));
+    generationNotes.push(polish.note);
+    if (polish.usedLlm) {
+      const validation = validateDraftText(polish.text, draft.sources, draft.landingUrl);
+      draft = {
+        ...draft,
+        text: polish.text,
+        toneScore: validation.toneScore,
+        usefulnessScore: validation.usefulnessScore,
+        generationNotes: [...generationNotes]
+      };
+      emit({ type: "llm:complete", pillar, message: polish.note });
+    } else {
+      draft = { ...draft, generationNotes: [...generationNotes] };
+      emit({ type: "llm:skip", pillar, message: polish.note });
+    }
+
     const duplicate = await store.findSimilarDraft(draft.text);
     if (duplicate) {
       skipped.push({ pillar, reason: `Duplicate draft ${duplicate.id}.` });
+      emit({ type: "draft:skipped", pillar, message: `Skipped duplicate draft ${duplicate.id}.` });
       continue;
     }
 
     const validation = validateDraftText(draft.text, draft.sources, draft.landingUrl);
     if (!validation.ok) {
       skipped.push({ pillar, reason: validation.errors.join(" ") });
+      emit({ type: "draft:skipped", pillar, message: `Skipped by guardrails: ${validation.errors.join(" ")}` });
       continue;
     }
 
@@ -77,8 +193,10 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
       usefulnessScore: validation.usefulnessScore
     });
     created.push(saved);
+    emit({ type: "draft:created", pillar, message: `Created draft for ${PILLAR_LABELS[pillar]}.` });
   }
 
+  emit({ type: "batch:complete", message: `Done. Created ${created.length}, skipped ${skipped.length}.` });
   return { created, skipped };
 }
 
@@ -86,11 +204,11 @@ export function buildDraftFromSources(
   pillar: ContentPillar,
   sources: Source[],
   now = new Date(),
-  options: { receiptLinks?: boolean } = {}
+  options: { receiptLinks?: boolean; agentInsight?: string | null; generationNotes?: string[] } = {}
 ): DraftPost {
   const id = makeId("draft");
   const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, options.receiptLinks ? id : undefined);
-  const text = composePostText(pillar, sources, landingUrl);
+  const text = composePostText(pillar, sources, landingUrl, 0, options.agentInsight);
   const validation = validateDraftText(text, sources, landingUrl);
   const timestamp = now.toISOString();
 
@@ -109,6 +227,7 @@ export function buildDraftFromSources(
     scheduledFor: nextPostingSlot(now).toISOString(),
     approvedBy: null,
     publishedPostId: null,
+    generationNotes: options.generationNotes ?? [],
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -169,9 +288,15 @@ async function runPillarSearches(tinyfish: TinyFishClient, pillar: ContentPillar
     .slice(0, 10);
 }
 
-function composePostText(pillar: ContentPillar, sources: Source[], landingUrl: string, hookOffset = 0): string {
+function composePostText(
+  pillar: ContentPillar,
+  sources: Source[],
+  landingUrl: string,
+  hookOffset = 0,
+  agentInsight?: string | null
+): string {
   const hook = pickHook(pillar, sources.length + hookOffset);
-  const insight = extractInsight(pillar, sources);
+  const insight = extractInsight(pillar, sources, agentInsight);
   return trimForX(`${hook} ${insight} TinyFish found the receipts: ${landingUrl}`);
 }
 
@@ -180,8 +305,13 @@ function pickHook(pillar: ContentPillar, offset: number): string {
   return hooks[offset % hooks.length];
 }
 
-function extractInsight(pillar: ContentPillar, sources: Source[]): string {
+function extractInsight(pillar: ContentPillar, sources: Source[], agentInsight?: string | null): string {
   const source = sources[0];
+  const enrichedInsight = agentInsight || source.agentInsight;
+  if (enrichedInsight) {
+    return `Useful bit: ${enrichedInsight}`;
+  }
+
   const summary = sourceSummary(source);
   const title = source.title.replace(/\s+/g, " ").trim();
   const label = PILLAR_LABELS[pillar].toLowerCase();
