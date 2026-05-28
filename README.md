@@ -49,8 +49,8 @@ No database is required for V1. Drafts are stored in the admin browser tab's `se
 
 ## Operational flow
 
-1. A human opens `/admin?token=...` and clicks **Generate drafts**.
-2. `/api/cron/generate` runs TinyFish Search queries for each content pillar.
+1. A human opens `/admin?token=...`, chooses the number of drafts and content pillars, then clicks **Generate drafts**.
+2. `/api/cron/generate` runs TinyFish Search queries for the selected pillars. If the requested count is higher than the number of selected pillars, the generator cycles through them.
 3. The app fetches up to 10 source URLs, merges source evidence, and drafts funny posts.
 4. The admin console streams live progress events so reviewers can see search, fetch, TinyFish Agent, LLM, and draft outcomes as they happen.
 5. Optional TinyFish Agent enrichment runs when `TINYFISH_AGENT_ENABLED=1`, using `/v1/automation/run-sse` to inspect top source pages for richer fantasy insights.

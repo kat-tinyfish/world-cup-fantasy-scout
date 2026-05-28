@@ -142,6 +142,7 @@ button {
 .card,
 .receipt-panel,
 .signup,
+.controls-panel,
 .progress-panel,
 .source-card,
 .draft-card,
@@ -227,6 +228,45 @@ textarea {
   margin-bottom: 24px;
 }
 
+.controls-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.35fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.controls-panel fieldset {
+  grid-column: 1 / -1;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.controls-panel legend {
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pillar-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.pillar-option input {
+  width: auto;
+}
+
 .progress-list {
   display: grid;
   gap: 12px;
@@ -290,7 +330,9 @@ textarea {
 
   .proof-grid,
   .receipt-panel,
-  .signup {
+  .signup,
+  .controls-panel,
+  .pillar-grid {
     grid-template-columns: 1fr;
   }
 

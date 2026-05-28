@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { PILLAR_LABELS } from "@/lib/personality";
 import type { GenerationProgressEvent } from "@/lib/generator";
-import type { DraftPost } from "@/lib/types";
+import type { ContentPillar, DraftPost } from "@/lib/types";
 
 type GenerateResponse = {
   created: DraftPost[];
@@ -20,10 +20,18 @@ type PublishResponse = {
 
 const SESSION_KEY = "world-cup-fantasy-scout:drafts";
 const LOG_SESSION_KEY = "world-cup-fantasy-scout:generation-log";
+const SETTINGS_SESSION_KEY = "world-cup-fantasy-scout:generation-settings";
+const PILLAR_OPTIONS = Object.keys(PILLAR_LABELS) as ContentPillar[];
 
 export function AdminConsole({ token }: { token: string }) {
   const [drafts, setDrafts] = useState<DraftPost[]>([]);
   const [generationLog, setGenerationLog] = useState<GenerationProgressEvent[]>([]);
+  const [draftCount, setDraftCount] = useState(3);
+  const [selectedPillars, setSelectedPillars] = useState<ContentPillar[]>([
+    "daily_scout",
+    "differential_radar",
+    "captaincy_chaos"
+  ]);
   const [message, setMessage] = useState("Drafts live in this browser tab and disappear when the session closes.");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -38,6 +46,13 @@ export function AdminConsole({ token }: { token: string }) {
     if (storedLog) {
       setGenerationLog(JSON.parse(storedLog) as GenerationProgressEvent[]);
     }
+
+    const storedSettings = sessionStorage.getItem(SETTINGS_SESSION_KEY);
+    if (storedSettings) {
+      const parsed = JSON.parse(storedSettings) as { draftCount?: number; selectedPillars?: ContentPillar[] };
+      if (parsed.draftCount) setDraftCount(parsed.draftCount);
+      if (parsed.selectedPillars?.length) setSelectedPillars(parsed.selectedPillars);
+    }
   }, []);
 
   useEffect(() => {
@@ -48,12 +63,22 @@ export function AdminConsole({ token }: { token: string }) {
     sessionStorage.setItem(LOG_SESSION_KEY, JSON.stringify(generationLog));
   }, [generationLog]);
 
+  useEffect(() => {
+    sessionStorage.setItem(SETTINGS_SESSION_KEY, JSON.stringify({ draftCount, selectedPillars }));
+  }, [draftCount, selectedPillars]);
+
   async function generateDrafts() {
     setIsGenerating(true);
     setGenerationLog([]);
     try {
-      setMessage("Generating source-backed chaos. The goblin is reading.");
-      const response = await fetch(`/api/cron/generate?token=${encodeURIComponent(token)}&stream=1`, {
+      const params = new URLSearchParams({
+        token,
+        stream: "1",
+        count: String(draftCount),
+        pillars: selectedPillars.join(",")
+      });
+      setMessage(`Generating ${draftCount} draft(s). The goblin is reading with intent.`);
+      const response = await fetch(`/api/cron/generate?${params.toString()}`, {
         cache: "no-store"
       });
       if (!response.ok || !response.body) {
@@ -80,6 +105,15 @@ export function AdminConsole({ token }: { token: string }) {
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function togglePillar(pillar: ContentPillar) {
+    setSelectedPillars((existing) => {
+      if (existing.includes(pillar)) {
+        return existing.length === 1 ? existing : existing.filter((item) => item !== pillar);
+      }
+      return [...existing, pillar];
+    });
   }
 
   function updateDraft(id: string, patch: Partial<DraftPost>) {
@@ -157,6 +191,42 @@ export function AdminConsole({ token }: { token: string }) {
           </button>
         </div>
       </header>
+
+      <section className="controls-panel">
+        <div>
+          <p className="eyebrow">Generation controls</p>
+          <h2>Choose the flavor of chaos.</h2>
+          <p>
+            Generate up to 12 drafts per batch. If the count is higher than the selected pillars, the app cycles
+            through your selected draft types.
+          </p>
+        </div>
+        <label>
+          Number of drafts
+          <input
+            type="number"
+            min={1}
+            max={12}
+            value={draftCount}
+            onChange={(event) => setDraftCount(clampDraftCount(Number(event.target.value)))}
+          />
+        </label>
+        <fieldset>
+          <legend>Draft types</legend>
+          <div className="pillar-grid">
+            {PILLAR_OPTIONS.map((pillar) => (
+              <label className="pillar-option" key={pillar}>
+                <input
+                  type="checkbox"
+                  checked={selectedPillars.includes(pillar)}
+                  onChange={() => togglePillar(pillar)}
+                />
+                <span>{PILLAR_LABELS[pillar]}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </section>
 
       <section className="progress-panel" aria-live="polite">
         <div className="draft-meta">
@@ -251,6 +321,11 @@ export function AdminConsole({ token }: { token: string }) {
 function mergeDrafts(incoming: DraftPost[], existing: DraftPost[]): DraftPost[] {
   const seen = new Set(existing.map((draft) => draft.id));
   return [...incoming.filter((draft) => !seen.has(draft.id)), ...existing];
+}
+
+function clampDraftCount(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(12, Math.max(1, Math.floor(value)));
 }
 
 type StreamEvent =

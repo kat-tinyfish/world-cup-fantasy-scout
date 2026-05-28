@@ -19,10 +19,13 @@ const DEFAULT_PILLARS: ContentPillar[] = [
   "built_with_tinyfish"
 ];
 
+export const MAX_DRAFTS_PER_GENERATION = 12;
+
 export type GenerateDraftsOptions = {
   store: Store;
   tinyfish?: TinyFishClient;
   pillars?: ContentPillar[];
+  targetCount?: number;
   now?: Date;
   receiptLinks?: boolean;
   onProgress?: (event: GenerationProgressEvent) => void;
@@ -61,7 +64,9 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
   const tinyfish = options.tinyfish ?? new TinyFishApiClient();
   const now = options.now ?? new Date();
   const env = getEnv();
-  const pillars = options.pillars ?? DEFAULT_PILLARS;
+  const pillars = normalizePillars(options.pillars);
+  const targetCount = normalizeTargetCount(options.targetCount ?? pillars.length);
+  const plan = buildGenerationPlan(pillars, targetCount);
   const created: DraftPost[] = [];
   const skipped: GenerateDraftsResult["skipped"] = [];
   let agentRuns = 0;
@@ -70,12 +75,12 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
   await store.ensureReady();
   emit({
     type: "batch:start",
-    message: `Starting ${pillars.length} content pillar(s).`,
-    count: pillars.length
+    message: `Starting ${targetCount} requested draft(s) across ${pillars.length} content pillar(s).`,
+    count: targetCount
   });
 
-  for (const pillar of pillars) {
-    emit({ type: "pillar:start", pillar, message: `Starting ${PILLAR_LABELS[pillar]}.` });
+  for (const [index, pillar] of plan.entries()) {
+    emit({ type: "pillar:start", pillar, message: `Starting draft ${index + 1}/${plan.length}: ${PILLAR_LABELS[pillar]}.` });
     emit({
       type: "search:start",
       pillar,
@@ -142,7 +147,8 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
     let draft = buildDraftFromSources(pillar, sources, now, {
       receiptLinks: options.receiptLinks ?? false,
       agentInsight,
-      generationNotes
+      generationNotes,
+      hookOffset: index
     });
 
     emit({ type: "llm:start", pillar, message: "Checking whether LLM joke polish is available." });
@@ -200,15 +206,32 @@ export async function generateDrafts(options: GenerateDraftsOptions): Promise<Ge
   return { created, skipped };
 }
 
+export function normalizePillars(pillars?: ContentPillar[]): ContentPillar[] {
+  const allowed = new Set(DEFAULT_PILLARS);
+  const normalized = [...new Set((pillars?.length ? pillars : DEFAULT_PILLARS).filter((pillar) => allowed.has(pillar)))];
+  return normalized.length ? normalized : DEFAULT_PILLARS;
+}
+
+export function normalizeTargetCount(count: number): number {
+  if (!Number.isFinite(count)) return 1;
+  return Math.min(MAX_DRAFTS_PER_GENERATION, Math.max(1, Math.floor(count)));
+}
+
+export function buildGenerationPlan(pillars: ContentPillar[], targetCount: number): ContentPillar[] {
+  const normalizedPillars = normalizePillars(pillars);
+  const normalizedCount = normalizeTargetCount(targetCount);
+  return Array.from({ length: normalizedCount }, (_, index) => normalizedPillars[index % normalizedPillars.length]);
+}
+
 export function buildDraftFromSources(
   pillar: ContentPillar,
   sources: Source[],
   now = new Date(),
-  options: { receiptLinks?: boolean; agentInsight?: string | null; generationNotes?: string[] } = {}
+  options: { receiptLinks?: boolean; agentInsight?: string | null; generationNotes?: string[]; hookOffset?: number } = {}
 ): DraftPost {
   const id = makeId("draft");
   const landingUrl = buildCampaignUrl(getEnv().appBaseUrl, pillar, options.receiptLinks ? id : undefined);
-  const text = composePostText(pillar, sources, landingUrl, 0, options.agentInsight);
+  const text = composePostText(pillar, sources, landingUrl, options.hookOffset ?? 0, options.agentInsight);
   const validation = validateDraftText(text, sources, landingUrl);
   const timestamp = now.toISOString();
 

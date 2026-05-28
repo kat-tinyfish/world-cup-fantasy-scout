@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/env";
-import { generateDrafts, type GenerationProgressEvent } from "@/lib/generator";
+import {
+  generateDrafts,
+  normalizePillars,
+  normalizeTargetCount,
+  type GenerationProgressEvent
+} from "@/lib/generator";
 import { createStore } from "@/lib/store";
+import type { ContentPillar } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,17 +24,23 @@ async function generate(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (new URL(request.url).searchParams.get("stream") === "1") {
-    return streamGenerate();
+  const generationRequest = parseGenerationRequest(request);
+
+  if (generationRequest.stream) {
+    return streamGenerate(generationRequest);
   }
 
   const store = createStore();
-  const result = await generateDrafts({ store });
+  const result = await generateDrafts({
+    store,
+    pillars: generationRequest.pillars,
+    targetCount: generationRequest.count
+  });
 
   return NextResponse.json(result);
 }
 
-function streamGenerate(): Response {
+function streamGenerate(generationRequest: ParsedGenerationRequest): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -40,6 +52,8 @@ function streamGenerate(): Response {
         const store = createStore();
         const result = await generateDrafts({
           store,
+          pillars: generationRequest.pillars,
+          targetCount: generationRequest.count,
           onProgress: send
         });
         send({ type: "result", data: result });
@@ -58,6 +72,24 @@ function streamGenerate(): Response {
       Connection: "keep-alive"
     }
   });
+}
+
+type ParsedGenerationRequest = {
+  stream: boolean;
+  count: number;
+  pillars: ContentPillar[];
+};
+
+function parseGenerationRequest(request: Request): ParsedGenerationRequest {
+  const params = new URL(request.url).searchParams;
+  const rawPillars = params.get("pillars")?.split(",").filter(Boolean) as ContentPillar[] | undefined;
+  const rawCount = Number(params.get("count") ?? rawPillars?.length ?? 1);
+
+  return {
+    stream: params.get("stream") === "1",
+    count: normalizeTargetCount(rawCount),
+    pillars: normalizePillars(rawPillars)
+  };
 }
 
 async function hasValidFormToken(request: Request): Promise<boolean> {

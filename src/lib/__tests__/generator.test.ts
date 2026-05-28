@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { generateDrafts, nextPostingSlot } from "../generator";
+import { buildGenerationPlan, generateDrafts, nextPostingSlot, normalizeTargetCount } from "../generator";
 import { MemoryStore } from "../store";
 import type { TinyFishClient } from "../tinyfish";
 
@@ -54,6 +54,23 @@ describe("generateDrafts", () => {
 
     expect(result.created).toHaveLength(0);
     expect(result.skipped[0].reason).toBe("No source results.");
+  });
+});
+
+describe("generation controls", () => {
+  it("round-robins selected pillars to satisfy the requested count", () => {
+    expect(buildGenerationPlan(["captaincy_chaos", "lineup_news_watch"], 5)).toEqual([
+      "captaincy_chaos",
+      "lineup_news_watch",
+      "captaincy_chaos",
+      "lineup_news_watch",
+      "captaincy_chaos"
+    ]);
+  });
+
+  it("clamps requested draft count", () => {
+    expect(normalizeTargetCount(0)).toBe(1);
+    expect(normalizeTargetCount(99)).toBe(12);
   });
 });
 
